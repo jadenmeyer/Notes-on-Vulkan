@@ -1,0 +1,99 @@
+\documentclass{book}
+
+%\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{textcomp}
+\usepackage{amsmath, amssymb}
+\usepackage{fancyhdr}
+\usepackage{hyperref}
+\usepackage{xcolor}
+% figure support
+\usepackage{import}
+\usepackage{xifthen}
+\usepackage{pdfpages}
+\usepackage{transparent}
+\usepackage{algorithm}
+\usepackage{algorithmic}
+\usepackage[most]{tcolorbox}
+\usepackage{listings}
+\usepackage{standalone}
+
+%\tcbuselibrary{listingsutf8}
+%\newtcbox{\inlinecode}{on line,
+%  box align=base,
+%  colback=gray!20,
+%  colframe=black!80,
+%  boxrule=0.4pt,
+%  arc=2pt,
+%  top=0.5pt, bottom=0.5pt,
+%  left=2pt, right=2pt}
+%\newcommand{\inlinecode}[1]{\raisebox{0.5ex}{\fbox{\texttt{#1}}}}
+\lstset{
+  language=C++,
+  basicstyle=\ttfamily\small,
+  frame=single,
+  backgroundcolor=\color{gray!10},
+  showstringspaces=false,
+  captionpos=b,
+  keywordstyle=\color{blue},
+  stringstyle=\color{green!60!black},
+  commentstyle=\color{gray}\itshape,
+  breaklines=true,                        % Enable line breaking
+  breakatwhitespace=false,                % Break anywhere, not just at spaces
+  postbreak=\mbox{\textcolor{gray}{$\hookrightarrow$}\space},
+}
+
+
+%\lstset{
+%  basicstyle=\ttfamily,         % Monospace font
+%  frame=single,                 % Single border around the code
+%  xleftmargin=1pt,              % Small margin to prevent text from touching the box
+%  xrightmargin=1pt,             % Small margin to prevent text from touching the box
+%  aboveskip=0pt,                % No extra space above the code
+%  belowskip=0pt,                % No extra space below the code
+%  backgroundcolor=\color{gray!100}, % Optional: Light gray background
+%  rulecolor=\color{blue!100},    % Optional: Border color
+%}
+
+\newcommand{\inlinecode}[1]{\lstinline|#1|}
+
+
+
+%\pagestyle{fancy}
+%\newpage
+%\pagestyle{fancy}
+%\fancyhf{}
+%\fancyhead[LE,RO]{Jaden Meyer}
+%\fancyhead[RE,LO]{Jaden Meyer}
+%\fancyfoot[LE,RO]{\thepage}
+\let\cleardoublepage\clearpage
+\pagestyle{plain}
+
+\begin{document}
+\begin{titlepage}
+  \begin{center}
+    \vspace*{1cm}
+    \Huge
+    Vulkan API Notes\\
+    \vspace{0.5cm}
+    \LARGE
+    Jaden Meyer\\
+    \vfill
+  \end{center}
+\end{titlepage}
+
+\cleardoublepage
+\pagenumbering{arabic}
+
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[LE,RO]{Jaden Meyer}
+\fancyhead[RE,LO]{Jaden Meyer}
+\fancyfoot[LE,RO]{\thepage}
+
+
+%%to view only a chapter at a time we will use the standalone package
+%%then use \includeonly{chapters/chapterx}
+\include{chapters/chapter1}
+
+\end{document}
