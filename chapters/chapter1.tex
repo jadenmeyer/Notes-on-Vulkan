@@ -2037,7 +2037,7 @@ rasterizer.frontFace = VK_FRONT_FACE_CLOCKWISE;
 \end{minipage}
 \end{center}
 
-\par The \inlinecode{cullMode} variable determiens the type of face culling to use. One could disable culling, cull the front faces, cull the back faces or both. \inlinecode{frontFace} variable specifies the vertex order for faces to be considered front-facing and can be clockwise or counterclockwise.
+\par The \inlinecode{cullMode} variable determines the type of face culling to use. One could disable culling, cull the front faces, cull the back faces or both. \inlinecode{frontFace} variable specifies the vertex order for faces to be considered front-facing and can be clockwise or counterclockwise.
 
 \begin{center}
 \begin{minipage}{0.95\linewidth}
@@ -2052,4 +2052,661 @@ rasterizer.depthBiasSlopeFactor = 0.0f; // Optional
 
 \par The rasterizer can alter the depth values by adding a constant value or biasing them based on a fragment's slope. This is sometimes used for shadow mapping; However, we won't be using it. For now set \inlinecode{depthBiasEnable} to \inlinecode{VK\_FALSE}.
 
-\par Time to start multisampling.
+\par Time to start multisampling. The \inlinecode{VkPipelineMultisampleStateCreateInfo} struct configures the multisampling. This is one way to enable anti-aliasing. This works by combining the fragment shader results of multiple polygons that raterize the same pixel. Because we don't need to run the gragment shader multiple times if only one polygon maps to a pixel, it is significantly less expensive than rednering to a higher resolution theh downscaling. This requires a GPU feature:
+
+\begin{center}
+\begin{minipage}{0.95\linewidth}
+\begin{lstlisting}
+VkPipelineMultisampleStateCreateInfo multisampling{};
+multisampling.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
+multisampling.sampleShadingEnable = VK_FALSE;
+multisampling.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+multisampling.minSampleShading = 1.0f; // Optional
+multisampling.pSampleMask = nullptr; // Optional
+multisampling.alphaToCoverageEnable = VK_FALSE; // Optional
+multisampling.alphaToOneEnable = VK_FALSE; // Optional
+\end{lstlisting}
+\end{minipage}
+\end{center}
+
+\par If using a depth or stencil buffer, then you need to configure the depth and stencil tests using \inlinecode{VkPipelineDepthStencilStateCreateInfo}. Since we don't have any of this, we can just pass a nullptr to this.
+
+\par For color blending, there is a bit more to do. After a fragment shader has returned a color, it needs to be combined with the color that is already in the framebuffer. There are two ways to do this:
+
+\begin{itemize}
+    \item Mix the old and new value to produce the final color
+    \item Combine the old and new value using a bitwise operation
+\end{itemize}
+
+\par There are two structs for color blending. The first: \inlinecode{VkPipelineColorBlendAttachmentState} contains the configuration per attached framebuffer. The second: \inlinecode{VkPipelineColorBlendStateCreateInfo} contains the global color blending settings. Since we only have one framebuffer:
+
+\begin{center}
+\begin{minipage}{0.95\linewidth}
+\begin{lstlisting}
+VkPipelineColorBlendAttachmentState colorBlendAttachment{};
+colorBlendAttachment.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
+colorBlendAttachment.blendEnable = VK_FALSE;
+colorBlendAttachment.srcColorBlendFactor = VK_BLEND_FACTOR_ONE; // Optional
+colorBlendAttachment.dstColorBlendFactor = VK_BLEND_FACTOR_ZERO; // Optional
+colorBlendAttachment.colorBlendOp = VK_BLEND_OP_ADD; // Optional
+colorBlendAttachment.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE; // Optional
+colorBlendAttachment.dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO; // Optional
+colorBlendAttachment.alphaBlendOp = VK_BLEND_OP_ADD; // Optional
+\end{lstlisting}
+\end{minipage}
+\end{center}
+
+\par This per-framebuffer stuct allows configuring the first way of color blending. If \inlinecode{blendEnable} is set to \inlinecode{VK\_FALSE}, then the new color from the fragment shader is passed through unmodified. Otherwise, the two mixing operations are perfomed to compute a new color. The resultant color is 'and'd' with the \inlinecode{colorWriteMask} to determine which channels are actually passed through.
+
+\par The most common implementation of color blending is alpha blending, where we want the new color to be blended with the old on its opacity. We can implement all this as:
+
+\begin{center}
+\begin{minipage}{0.95\linewidth}
+\begin{lstlisting}
+colorBlendAttachment.blendEnable = VK_TRUE;
+colorBlendAttachment.srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
+colorBlendAttachment.dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+colorBlendAttachment.colorBlendOp = VK_BLEND_OP_ADD;
+colorBlendAttachment.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
+colorBlendAttachment.dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
+colorBlendAttachment.alphaBlendOp = VK_BLEND_OP_ADD;
+\end{lstlisting}
+\end{minipage}
+\end{center}
+
+\par All possible operations in the \inlinecode{VkBlendFactor} and \inlinecode{VkBlendOp} enumerations in the specification.
+
+\par The second structure references the array of strucutres for all the framebuffesr and allows you to set blend constants that you can use as blend factors in the calculations I omitted.
+
+\begin{center}
+\begin{minipage}{0.95\linewidth}
+\begin{lstlisting}
+VkPipelineColorBlendStateCreateInfo colorBlending{};
+colorBlending.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
+colorBlending.logicOpEnable = VK_FALSE;
+colorBlending.logicOp = VK_LOGIC_OP_COPY; // Optional
+colorBlending.attachmentCount = 1;
+colorBlending.pAttachments = &colorBlendAttachment;
+colorBlending.blendConstants[0] = 0.0f; // Optional
+colorBlending.blendConstants[1] = 0.0f; // Optional
+colorBlending.blendConstants[2] = 0.0f; // Optional
+colorBlending.blendConstants[3] = 0.0f; // Optional
+\end{lstlisting}
+\end{minipage}
+\end{center}
+
+\par If you want to use the second method of blending(bitwise), then you should set \inlinecode{logicOpEnable} to \inlinecode{VK\_TRUE}. The bitwise operation can then be specified in the \inlinecode{logicOp} field. This will automatically disable the first method. The \inlinecode{colorWriteMask} will also be used in the mod to determine which channels in the framebuffer will actually be affected.
+
+\par One can use the \inlinecode{uniform} values in shaders, which are globals similar to dynamic state variables that can be changed at drawing time to alter behavior of your shaders withou having to recreate them. They are commonly used to pas the transformation matrix to the vertex shader, or to create texture samplers in the fragment shader. These uniform values need to be specifed during pipeline creation by creating a \inlinecode{VkPipelineLayout} object. Even though we aren't going to use them yet. However we still need to create an empty pipeline layout. So we need to create a private class member for this object: \inlinecode{VkPipelineLayout pipelineLayout;}. Then we need to create the object in \inlinecode{createGraphicsPipeline} function:
+
+\begin{center}
+\begin{minipage}{0.95\linewidth}
+\begin{lstlisting}
+VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
+pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+pipelineLayoutInfo.setLayoutCount = 0; // Optional
+pipelineLayoutInfo.pSetLayouts = nullptr; // Optional
+pipelineLayoutInfo.pushConstantRangeCount = 0; // Optional
+pipelineLayoutInfo.pPushConstantRanges = nullptr; // Optional
+
+if (vkCreatePipelineLayout(device, &pipelineLayoutInfo, nullptr, &pipelineLayout) != VK_SUCCESS) {
+    throw std::runtime_error("failed to create pipeline layout!");
+}
+\end{lstlisting}
+\end{minipage}
+\end{center}
+
+\par One thing to note is that the structure also specifies \emph{push constants}, which are another way of passing dynamic values to shaders. We must now destroy the pipeline:
+
+\begin{center}
+\begin{minipage}{0.95\linewidth}
+\begin{lstlisting}
+void cleanup() {
+    vkDestroyPipelineLayout(device, pipelineLayout, nullptr);
+    ...
+}
+\end{lstlisting}
+\end{minipage}
+\end{center}
+
+\par That is the end of the fixed-function state we can now create the final part of the graphics pipeline: the render pass.
+
+\par We need to tell Vulkan about the framebuffer attachments that will be used whilst rendering. We need to specify how many color and depth buffers there will be, how many samples for each of them and how their contents should be handled throughout rendering operations. This is all wrapped in a render pass object. We will create a new \inlinecode{createRenderPass} function and call this BEFORE the \inlinecode{createGraphicsPipeline}.
+
+\par In our case, we will have just a single color buffer attachment represented by one of the images from the swap chain.
+
+\begin{center}
+\begin{minipage}{0.95\linewidth}
+\begin{lstlisting}
+void createRenderPass() {
+    VkAttachmentDescription colorAttachment{};
+    colorAttachment.format = swapChainImageFormat;
+    colorAttachment.samples = VK_SAMPLE_COUNT_1_BIT;
+}
+\end{lstlisting}
+\end{minipage}
+\end{center}
+
+\par The \inlinecode{format} of the color attachment should match the format of the swap chain images, and since we are doing multisampling yet, we will do only $1$ sample:
+
+\begin{center}
+\begin{minipage}{0.95\linewidth}
+\begin{lstlisting}
+colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+\end{lstlisting}
+\end{minipage}
+\end{center}
+
+\par The \inlinecode{loadOp} and \inlinecode{storeOp} apply to color and depth data, and \inlinecode{stencilLoadOp}/\inlinecode{stencilStoreOp} apply to stencil data. So the results of loading and storing are irrelevant:
+
+\begin{center}
+\begin{minipage}{0.95\linewidth}
+\begin{lstlisting}
+colorAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+colorAttachment.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+\end{lstlisting}
+\end{minipage}
+\end{center}
+
+\par Textures and framebuffers in Vulkan are represented by \inlinecode{VkImage} objects with certain pixel format, however the layout of the pixels in memory can change based on what you are trying to do with an image:
+
+\begin{itemize}
+    \item \inlinecode{VK\_IMAGE\_LAYOUT\_COLOR\_ATTACHMENT\_OPTIMAL} images are used as color attachment
+    \item \inlinecode{VK\_IMAGE\_LAYOUT\_PRESENT\_SRC\_KHR} imagess are to be presented to the swap chain
+    \item \inlinecode{VK\_IMAGE\_LAYOUT\_TRANSFER\_DST\_OPTIMAL} images to be used as destination for a memory copy operation.
+\end{itemize}
+
+\par There is more to this, but for now, images need to be transitioned into specific layouts that are suitable for the operation they are going to be involved in next.
+
+\par The \inlinecode{initialLayout} specifies which layout the image will have before the render pass starts. The \inlinecode{finalLayout} specifies the layout to automatically transition to when the render pass finishes. Using \inlinecode{VK\_IMAGE\_LAYOUT\_UNDEFINED} for \inlinecode{initialLayout} means we don't care what previous layout the image was in. However, the contents of the image are not guranteed to be preserved, but we are going to clear it anyways. Since we want the image to be ready for presentation using the swap chain after rendering, hence using the specified funcitons.
+
+\par A single render pass can have multiple \emph{subpasses}. These are subsequent rendering operations that depend on teh contents of framebuffers in previous passes. For the triangle we are going to stick to a single subpass. Every subpass is going to reference one or more of the attachments that we have described using the structure in the previous sectins. The references are \inlinecode{VkAttachmentReference} structs looking like:
+
+\begin{center}
+\begin{minipage}{0.95\linewidth}
+\begin{lstlisting}
+VkAttachmentReference colorAttachmentRef{};
+colorAttachmentRef.attachment = 0;
+colorAttachmentRef.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+\end{lstlisting}
+\end{minipage}
+\end{center}
+
+\par The \inlinecode{attachment} parameter specifies which attachment to reference by its index in the attachment descriptions array. This array is going to consist of a single \inlinecode{VkAttachmentDescription} so the index is $0$. The \inlinecode{layout} tells which layout we want the attachment to have during a subpass utilizing this reference. Vulkan will automatically transition the attachment to this layout when the subpass is started. We intend to use the attachment to function as a color buffer and the \inlinecode{VK\_IMAGE\_LAYOUT\_COLOR\_ATTACHMENT\_OPTIMAL} layout will give the best performance for now. 
+
+\par The subpass is described using a \inlinecode{VkSubpassDescription} structure. Vulkan may also suppport compute subpasses in the future, so we have to be explicit about this being a graphics subpass. Now we specify the reference to the color attachment:
+
+\begin{center}
+\begin{minipage}{0.95\linewidth}
+\begin{lstlisting}
+VkSubpassDescription subpass{};
+subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
+subpass.colorAttachmentCount = 1;
+subpass.pColorAttachments = &colorAttachmentRef;
+\end{lstlisting}
+\end{minipage}
+\end{center}
+
+\par The index of the attachment in this array is directly referenced from the fragment shader with the \inlinecode{layout(location = 0) out vec4 outColor} directive. These $4$ types of attachments can be referenced by the subpass:
+
+\begin{itemize}
+    \item \inlinecode{pInputAttachments} Attachments read from a shader
+    \item \inlinecode{pResolveAttachments} Attachments used for multisampling color attachments
+    \item \inlinecode{pDepthStencilAttachment} Attachment for depth and stencil data
+    \item \inlinecode{pPreserveAttachments} Attachments that are not used by this subpass, but for which the data must be preserved.
+\end{itemize}
+
+\par Now that the attachment and a basic subpass referencing it have been described, we can creat the render pass now. Create a new pricate class member variable holding the \inlinecode{VkRenderPass} oject right aboce the \inlinecode{piplienlayout} variable.
+
+\begin{center}
+\begin{minipage}{0.95\linewidth}
+\begin{lstlisting}
+VkRenderPass renderPass;
+VkPipelineLayout pipelineLayout;
+\end{lstlisting}
+\end{minipage}
+\end{center}
+
+\par We can then create the render pass object by filling in \inlinecode{VkRenderPassCreateInfo} structure witha n array of attachments ad subpasses. The \inlinecode{VkAttachmentReference} objects reference attachmetns using the indices of this array.
+
+\begin{center}
+\begin{minipage}{0.95\linewidth}
+\begin{lstlisting}
+VkRenderPassCreateInfo renderPassInfo{};
+renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
+renderPassInfo.attachmentCount = 1;
+renderPassInfo.pAttachments = &colorAttachment;
+renderPassInfo.subpassCount = 1;
+renderPassInfo.pSubpasses = &subpass;
+
+if (vkCreateRenderPass(device, &renderPassInfo, nullptr, &renderPass) != VK_SUCCESS) {
+    throw std::runtime_error("failed to create render pass!");
+}
+\end{lstlisting}
+\end{minipage}
+\end{center}
+
+\par As per usual you need to destroy the in the cleanup:
+
+\begin{center}
+\begin{minipage}{0.95\linewidth}
+\begin{lstlisting}
+void cleanup() {
+    vkDestroyPipelineLayout(device, pipelineLayout, nullptr);
+    vkDestroyRenderPass(device, renderPass, nullptr);
+    ...
+}
+\end{lstlisting}
+\end{minipage}
+\end{center}
+
+\par We can now combine all that crazy buildup fo shader stages, fixed function state, pipeline layout, and render pass. These all define the functionality of the graphics pipeline so we can start will the \inlinecode{VkGraphicsPipelineCreateInfo} structure at the end fo \inlinecode{createGraphicsPipeline} function. Yet before the calsto \inlinecode{vkDestroyShaderModule} because these sill need to be used during the creation.
+
+\begin{center}
+\begin{minipage}{0.95\linewidth}
+\begin{lstlisting}
+VkGraphicsPipelineCreateInfo pipelineInfo{};
+pipelineInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
+pipelineInfo.stageCount = 2;
+pipelineInfo.pStages = shaderStages;
+\end{lstlisting}
+\end{minipage}
+\end{center}
+
+\par We start by referenceing the array of \inlinecode{VkPipelineShaderStageCreateInfo} structs.
+
+\begin{center}
+\begin{minipage}{0.95\linewidth}
+\begin{lstlisting}
+pipelineInfo.pVertexInputState = &vertexInputInfo;
+pipelineInfo.pInputAssemblyState = &inputAssembly;
+pipelineInfo.pViewportState = &viewportState;
+pipelineInfo.pRasterizationState = &rasterizer;
+pipelineInfo.pMultisampleState = &multisampling;
+pipelineInfo.pDepthStencilState = nullptr; // Optional
+pipelineInfo.pColorBlendState = &colorBlending;
+pipelineInfo.pDynamicState = &dynamicState;
+\end{lstlisting}
+\end{minipage}
+\end{center}
+
+\par We then reference all the strucutres descrbing the fixed-function stage. The comes the pipeline layout, which is a Vulkan handle rather than a struct pointer.
+
+\begin{center}
+\begin{minipage}{0.95\linewidth}
+\begin{lstlisting}
+pipelineInfo.layout = pipelineLayout;
+pipelineInfo.renderPass = renderPass;
+pipelineInfo.subpass = 0;
+\end{lstlisting}
+\end{minipage}
+\end{center}
+
+\par This means we finally ahve the reference to the render pass and the index of the sub pass where this graphics pipeline is used.  It is possible to use other render passes with this pipeline isntead of another, but they have to be compatible with \inlinecode{renderPass}. Here is some code about that:
+
+\begin{center}
+\begin{minipage}{0.95\linewidth}
+\begin{lstlisting}
+pipelineInfo.basePipelineHandle = VK_NULL_HANDLE; // Optional
+pipelineInfo.basePipelineIndex = -1; // Optional
+\end{lstlisting}
+\end{minipage}
+\end{center}
+
+\par There are actually two more parameters: basePipelineHandle and \inlinecode{basePipelineIndex} Vulkan allows one to create a new graphics pipeline by deriving from an existing pipeline. The core idea is that it is less expensive to set up pipelines with the same functionality with an existing pipeline and switching between pipelines from the same parent can be done quicker.One can specify then handle of an existing pipeline with \inlinecode{basePipelineHandle} or reference another pipeline about to be create by index with \inlinecode{basePipelineIndex}. Right now there is only a single pipeline so we will specify a null handle and an invalid index. These are only used if the \inlinecode{VK\_PIPELINE\_CREATE\_DERIVATIVE\_BIT} flag is also specifed in the flags field of \inelinecode{VkGraphicsPipelineCreateInfo}. Create a \inlinecode{VkPipeline} object.
+
+\begin{center}
+\begin{minipage}{0.95\linewidth}
+\begin{lstlisting}
+VkPipeline graphicsPipeline;
+\end{lstlisting}
+\end{minipage}
+\end{center}
+
+
+\par Then create the graphics pipeline:
+
+\begin{center}
+\begin{minipage}{0.95\linewidth}
+\begin{lstlisting}
+if (vkCreateGraphicsPipelines(device, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &graphicsPipeline) != VK_SUCCESS) {
+    throw std::runtime_error("failed to create graphics pipeline!");
+}
+\end{lstlisting}
+\end{minipage}
+\end{center}
+
+\par The \inlinecdoe{vkCreateGraphicsPipeline} function actually has more parameters than the usual object creation functions in vulkan. It is designed to take multiple \inlinecode{VkGraphicsPipelineCreateInfo} objects and create mulitiple \inlinecode{VkPipeline} in a single call.
+
+\par the second parameter, for which we passed the null handle argument, references an optional \inlinecode{VkPipelineCache} object. This can be used to store and reusue data relevant to pipeline creation across multiple calls to \inlinecode{vkCreateGraphicsPipelines} and even across program executions if the cache is stored to a file. Since the pipeline is used for all common drawing operations, it should be destroyed at the end of the program:
+
+\begin{center}
+\begin{minipage}{0.95\linewidth}
+\begin{lstlisting}
+void cleanup() {
+    vkDestroyPipeline(device, graphicsPipeline, nullptr);
+    vkDestroyPipelineLayout(device, pipelineLayout, nullptr);
+    ...
+}
+\end{lstlisting}
+\end{minipage}
+\end{center}
+
+\par It is worth running the program at this point!!!
+
+\section*{Framebuffers}
+
+\par The attachments we specifed during the render pass creation are bound by wrapping them into a \inlinecode{VkFramebuffer} object. A framebuffer object references all of the \inlinecodeP{VkImageView} objects representing the attachments. In the case of the triangle, there is only one: the color attachment.
+
+\par The image that we have to use for the attachment depends on which image the swap chain returns when we retrieve one for presentation. Ie we ahve to create a framebuffer for all the images in the swap chain and use the one that corresponds to the retrieved image at drawing time. So create another vector class member to hold the framebuffers:
+
+\begin{center}
+\begin{minipage}{0.95\linewidth}
+\begin{lstlisting}
+std::vector<VkFramebuffer> swapChainFramebuffers;
+\end{lstlisting}
+\end{minipage}
+\end{center}
+
+\par We will create the objects for this array in a new \inlinecode{createFramebuffers} function called after creating the graphics pipeline in \inlinecode{initVulkan}. We will start out the function by resizing the container to hold all the framebuffers. Then we will iterate through the image views and craete framebuffers from them.
+
+\begin{center}
+\begin{minipage}{0.95\linewidth}
+\begin{lstlisting}
+void createFramebuffers() {
+    swapChainFramebuffers.resize(swapChainImageViews.size()); //resize container
+
+    for (size_t i = 0; i < swapChainImageViews.size(); i++) {
+    VkImageView attachments[] = {
+        swapChainImageViews[i]
+    };
+
+    VkFramebufferCreateInfo framebufferInfo{};
+    framebufferInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
+    framebufferInfo.renderPass = renderPass;
+    framebufferInfo.attachmentCount = 1;
+    framebufferInfo.pAttachments = attachments;
+    framebufferInfo.width = swapChainExtent.width;
+    framebufferInfo.height = swapChainExtent.height;
+    framebufferInfo.layers = 1;
+
+    if (vkCreateFramebuffer(device, &framebufferInfo, nullptr, &swapChainFramebuffers[i]) != VK_SUCCESS) {
+        throw std::runtime_error("failed to create framebuffer!");
+    }
+}
+}
+\end{lstlisting}
+\end{minipage}
+\end{center}
+
+\par You first need to specify with which \inlinecode{renderPass} the framebuffer needs to be compatible with. This is a requirement.
+
+\par the \inlinecode{attachmentCount} and \inlinecode{pAttachments} parameters specify the \inlinecode{VkImageView} objects that should be bound to the respective attachment descriptions in the render pass \inlinecode{pAttachment} array. The width and height parameters explain themselves and layers refeters to the number of layers in image arrays. Our swap chain images are single images so the number of layers is $1$. We shoud delete the framebuffesr before the image views and render pass they are based on only after finishin rendering. (note since in a vector need to loop).
+
+ \begin{center}
+\begin{minipage}{0.95\linewidth}
+\begin{lstlisting}
+void cleanup() {
+    for (auto framebuffer : swapChainFramebuffers) {
+        vkDestroyFramebuffer(device, framebuffer, nullptr);
+    }
+
+    ...
+}
+\end{lstlisting}
+\end{minipage}
+\end{center}
+
+\section*{Command Buffers}
+
+\par Commands in Vulkan are not executed directly using function calls. You have to record all the operations you want to perfom in command buffer objects. This is adcantageous because we just send a group of wants to Vulkan so it can figure it out more efficiently.
+
+\par We have to create a command pool before we can create command buffers. Command pools manage the memroy that is used to store the buffers and command buffers are allocated from them. Add another class member by the name of \inlinecode{VkCommandPool}. Create a new function by the name of \inlinecode{createCommandPool} and call it in \inlinecode{initVulkan} after the framebuffers were created. Command pool creation only takes two parameters:
+
+\begin{center}
+\begin{minipage}{0.95\linewidth}
+\begin{lstlisting}
+QueueFamilyIndices queueFamilyIndices = findQueueFamilies(physicalDevice);
+
+VkCommandPoolCreateInfo poolInfo{};
+poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+poolInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
+poolInfo.queueFamilyIndex = queueFamilyIndices.graphicsFamily.value();
+\end{lstlisting}
+\end{minipage}
+\end{center}
+
+\par There are two possible flags for command pools:
+
+\begin{itemize}
+\item {VK\_COMMAND\_POOL\_CREATE\_TRANSIENT\_BIT} Hit that command buffers are rerecorded with new commands very often
+\item {VK\_COMMAND\_POOL\_CREATE\_RESET\_COMMAND\_BUFFER\_BIT} Allow command buffers to be rerecorded individually, without this, they all have to be reset together.
+\end{itemize}
+
+\par We will be recording a command buffer ever frame so we want to be able to reset an rerecord over it thus we will use the second flag. Command buffers are executed by submitting them on one of the device queues, like the graphics and presentation queues we retrived. Each command pool can only allocate command buffers that are submitted on a single type of queue. We are going to record commands fro drawing so this i swhy we chose the graphics queue family:
+
+\begin{center}
+\begin{minipage}{0.95\linewidth}
+\begin{lstlisting}
+if (vkCreateCommandPool(device, &poolInfo, nullptr, &commandPool) != VK_SUCCESS) {
+    throw std::runtime_error("failed to create command pool!");
+}
+\end{lstlisting}
+\end{minipage}
+\end{center}
+
+\par Commands will be used all throughout the program to draw things on the screen, so the pool should be destroyed at the end.
+
+\begin{center}
+\begin{minipage}{0.95\linewidth}
+\begin{lstlisting}
+void cleanup() {
+    vkDestroyCommandPool(device, commandPool, nullptr);
+
+    ...
+}
+\end{lstlisting}
+\end{minipage}
+\end{center}
+
+\par We can now start our allocation of command buffers. Create a \inlinecode{VkCommandBuffer} object class member and call it \inlinecode{commandBuffer}. These are automatically freed when their command pool is destroyed so no explicit cleanup is needed. You can add the function at the bottom of the call stack in \inlinecode{initVulkan}.
+
+\par Command buffers are allocated with the \inlinecode{vkAllocateCommandBuffers} function, which takes a \inlinecode{VkCommandBufferAllocateInfo} struct as a parameter that specifies the commadn pool and number of buffers to allocate:
+
+\begin{center}
+\begin{minipage}{0.95\linewidth}
+\begin{lstlisting}
+VkCommandBufferAllocateInfo allocInfo{};
+allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+allocInfo.commandPool = commandPool;
+allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+allocInfo.commandBufferCount = 1;
+
+if (vkAllocateCommandBuffers(device, &allocInfo, &commandBuffer) != VK_SUCCESS) {
+    throw std::runtime_error("failed to allocate command buffers!");
+}
+\end{lstlisting}
+\end{minipage}
+\end{center}
+
+\par The level parameter specifies if the allocated command buffers are primary or secondary command buffers.
+
+\begin{itemize}
+    \item \inlinecode{VK\_COMMAND\_BUFFER\_LEVEL\_PRIMARY} Can be submitted to a queue for execution, but cannot be called from other command buffers.
+    \item \inlinecode{VK\_COMMAND\_BUFFER\_LEVEL\_SECONDARY} Cannot be submitted directly, but can be called from primary command buffers/
+\end{itemize}
+
+\par For now we are not going to use the secondary command buffer. Since we are only allocating one command buffer, the \inlinecode{commandBufferCoutn} parameter is just $1$.
+
+\par We will now move to \inlinecode{recordCommandBuffer} functionat that writes commands we want to execute into a command buffer. The \inlinecode{VkCommandBuffer} used will be passed in as a parameter as well as the inex of the current swap chain image we want to write to.
+
+ \begin{center}
+\begin{minipage}{0.95\linewidth}
+\begin{lstlisting}
+void recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex) {
+
+}
+\end{lstlisting}
+\end{minipage}
+\end{center}
+
+\par We always begin recording a command buffer by calling \inlinecode{vkBeginCommandBuffer} with a small \inlinecode{VkCommandBufferBeginInfo} structure as argument that specifies some details about the usage of  a particular command buffer:
+
+\begin{center}
+\begin{minipage}{0.95\linewidth}
+\begin{lstlisting}
+VkCommandBufferBeginInfo beginInfo{};
+beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+beginInfo.flags = 0; // Optional
+beginInfo.pInheritanceInfo = nullptr; // Optional
+
+if (vkBeginCommandBuffer(commandBuffer, &beginInfo) != VK_SUCCESS) {
+    throw std::runtime_error("failed to begin recording command buffer!");
+}
+\end{lstlisting}
+\end{minipage}
+\end{center}
+
+
+\par the flags parameter specifies how we are going to use the command buffer. These are the possible values:
+
+\begin{itemize}
+    \item \inlinecode{VK\_COMMAND\_BUFFER\_USAGE\_ONE\_TIME\_SUBMIT\_BIT} The commadn buffer will be rerecorded after executing it once.
+    \item \inlinecode{VK\_COMMAND\_BUFFER\_USAGE\_RENDER\_PASS\_CONTINUE\_BIT} This is a secondary command buffer that wil be entirely within a single render pass
+    \item \inlinecode{VK\_COMMAND\_BUFFER\_USAGE\_SIMULTANEOUS\_USE\_BIT} The command buffer can be resubmitted while it is also already pending execution
+\end{itemize}
+
+\par We won't use any of these right now. The \inlinecode{pInheritanceInfo} parameter is only relevant for secondary command buffers. It specifies which state to inherit from the calling primary command buffers.
+
+\par If the comand buffer has already been recorded, then call \inlinecode{vkBeginCommandBuffer} will reset it. It is not possible to append commands to a buffer at a later time. 
+
+\par Drawing starts by starting the render pass with \inlinecode{vkCmdBeginRenderPass}. The render pass is configured using som parameters in a \inlinecode{VkRenderPassBeginInfo} struct.
+
+\par Before we show the code, we note the first parametesr are the render pas itself and the attachments to bind. We created a framebuffer for each swap chain specified as a color attachment. Therefore we need to bind the framebuffer for the swapchain image we want to draw to. Using hte imageIndex parameter which was passed in, we can pick the right framebuffer for the current swapchain image.
+
+\begin{center}
+\begin{minipage}{0.95\linewidth}
+\begin{lstlisting}
+VkRenderPassBeginInfo renderPassInfo{};
+renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+renderPassInfo.renderPass = renderPass;
+renderPassInfo.framebuffer = swapChainFramebuffers[imageIndex];
+
+renderPassInfo.renderArea.offset = {0, 0};
+renderPassInfo.renderArea.extent = swapChainExtent;
+\end{lstlisting}
+\end{minipage}
+\end{center}
+
+\par The next two parametesr define the size of the render area. The render area then defines where shader loads and stores will take place. The pixels outside this region will have undefined values. For the best performance, it should match the seize of the attachments.
+
+\begin{center}
+\begin{minipage}{0.95\linewidth}
+\begin{lstlisting}
+VkClearValue clearColor = {{{0.0f, 0.0f, 0.0f, 1.0f}}};
+renderPassInfo.clearValueCount = 1;
+renderPassInfo.pClearValues = &clearColor;
+\end{lstlisting}
+\end{minipage}
+\end{center}
+
+\par The last two parameters define the vlear values to use for \inlinecode{VK\_ATTACHMENT\_LOAD\_OP\_CLEAR}, which we used as a load operation for the color attachment. In this case we made it black with 100\% opacity:
+
+\begin{center}
+\begin{minipage}{0.95\linewidth}
+\begin{lstlisting}
+vkCmdBeginRenderPass(commandBuffer, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
+\end{lstlisting}
+\end{minipage}
+\end{center}
+
+\par The render pass can now start. All functions recording commands can be ided by their \inlinecode{vkCmd} prefix.
+
+\par The first parameter for every commadn is always the command buffer to record the command to. The second, tells the details of the render pass we have just provided. The last controls how the drawing commands within the render pass will be provided. There are two values:
+
+\begin{itemize}
+    \item \inlinecode{VK\_SUBPASS\_CONTENTS\_INLINE} The render pass commands will be embedded in the primary command buffer itself and no seconday command buffers are executed.
+    \item \inlinecode{VK\_SUBPASS\_CONTENTS\_SECONDARY\_COMMAND\_BUFFERS} The render pass commands will be executed from secondary command buffers.
+\end{itemize}
+
+\par For now, we aren't using secondary command buffers, so we will do the first option.
+
+\par We can now bind the graphics pipeline.
+
+\begin{center}
+\begin{minipage}{0.95\linewidth}
+\begin{lstlisting}
+vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, graphicsPipeline);
+\end{lstlisting}
+\end{minipage}
+\end{center}
+
+\par The second parameter specifies if the pipeline object is a graphics or compute pipeline. We have now told Vulkan which operations to execute in teh graphics pipeline and which attachment to use in the fragment shader.
+
+\par We did specify the viewport and scissor state for this pipeline to be dynamic. So we need to set them in the command buffer before initiating the draw command.
+
+\begin{center}
+\begin{minipage}{0.95\linewidth}
+\begin{lstlisting}
+VkViewport viewport{};
+viewport.x = 0.0f;
+viewport.y = 0.0f;
+viewport.width = static_cast<float>(swapChainExtent.width);
+viewport.height = static_cast<float>(swapChainExtent.height);
+viewport.minDepth = 0.0f;
+viewport.maxDepth = 1.0f;
+vkCmdSetViewport(commandBuffer, 0, 1, &viewport);
+
+VkRect2D scissor{};
+scissor.offset = {0, 0};
+scissor.extent = swapChainExtent;
+vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
+\end{lstlisting}
+\end{minipage}
+\end{center}
+
+\par We can now issue the draw command for the triangle.
+
+\begin{center}
+\begin{minipage}{0.95\linewidth}
+\begin{lstlisting}
+vkCmdDraw(commandBuffer, 3, 1, 0, 0);
+\end{lstlisting}
+\end{minipage}
+\end{center}
+
+\par The actual \inlinecode{vkCmdDraw} function ain't much but its simple from all the boilerplate. it has these parameters:
+
+\begin{itemize}
+    \item \inlinecode{vertexCount} Even though we don't have a vetex buffer, we technically still have to draw 3 vertices.
+    \item \inlinecode{instanceCount} Used for instanced rendering, use $1$ if you are not doing that.
+    \item \inlinecode{firstVertex} Used as an offset into the vertex buffer, defines the lowest value of \inlinecode{gl\_VertexIndex}
+    \item \inlinecode{firstInstance} Used as an offset for instanced rendering, defines the lowest \inlinecode{gl\_InstanceIndex}.
+\end{itemize}
+
+\par The render pass can now be ended. 
+
+\begin{center}
+\begin{minipage}{0.95\linewidth}
+\begin{lstlisting}
+vkCmdEndRenderPass(commandBuffer);
+\end{lstlisting}
+\end{minipage}
+\end{center}
+
+\par We've finished recording the command buffer.
+
+\begin{center}
+\begin{minipage}{0.95\linewidth}
+\begin{lstlisting}
+if (vkEndCommandBuffer(commandBuffer) != VK_SUCCESS) {
+    throw std::runtime_error("failed to record command buffer!");
+}
+\end{lstlisting}
+\end{minipage}
+\end{center}
+
+\par We will now write the code for the main loop in which we can acquire an image from the swap chain, record and execute a command buffer.
+
+\section*{Rendering and Presentation}
